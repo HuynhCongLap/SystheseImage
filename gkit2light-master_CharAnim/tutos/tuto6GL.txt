@@ -1,0 +1,109 @@
+
+/*! \addtogroup draw glDraw( ) et la famille
+
+cf \ref tuto6GL.cpp
+
+glDraw( ) est une famille de fonctions, et selon la description du maillage (sommets partagés, ou pas) il faut utiliser :
+    - glDrawElements( ) : lorsque le maillage est décrit par des sommets partagés / indexés, les triangles sont décrits par des triplets d'indices,
+    - glDrawArrays( ) : lorsque le maillage est décrit uniquement par les coordonnées de ses sommets, les triangles sont décrits par des triplets de positions.
+
+la classe Mesh peut stocker les 2 types de maillages : il suffit de vérifier qu'un index buffer existe (cf Mesh::index_count() > 0 ou Mesh::index_buffer_size() > 0) 
+pour savoir qu'il faut utiliser glDrawElements( ) plutot que glDrawArrays( ). cf \ref tuto4GL pour des exemples.
+
+_remarque : quel est l'intêret d'utiliser des sommets partagés ?_
+
+la description de l'objet est plus compacte...
+un indice est un entier stocké sur 4, 2 ou 1 octets, un sommet est a priori 3 floats qui occuppent 4 octets chacuns, soit 12 octets au total. si l'on ajoute les 
+normales (3 floats) et les coordonnées de textures (2 floats), un sommet occuppe 3x4 + 3x4 + 2x4 = 32 octets.
+
+un simple cube composé de 8 sommets (soit 8x32 = 256 octets) et de 12 triangles indexés (12x3x4 = 144 octets) occuppe 400 octets.
+sans utiliser l'indexation, il faut décrire les 3 sommets des 12 triangles : 12x3x32 = 1152 octets... et autre amélioration, les vertex shaders ne transforment que 8 sommets dans un cas, 
+contre 36 dans l'autre...
+
+
+### glDrawArrays et Mesh
+
+s'il n'existe pas d'index buffer dans l'objet, il suffit de créer un vertex buffer et de configurer un vao :
+\code
+Mesh mesh = { ... };
+
+// configuration
+GLuint vao= 0;
+GLuint vertex_buffer= 0;
+
+glGenVertexArrays(1, &vao);
+glBindVertexArray(vao);
+
+glGenBuffers(1, &vertex_buffer);
+glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+glBufferData(GL_ARRAY_BUFFER, mesh.vertex_buffer_size(), mesh.vertex_buffer(), GL_STATIC_DRAW);
+
+// configure l'attribut 0, cf layout(location= 0) in vec3 position, dans le vertex shader
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+glEnableVertexAttrib(0);
+
+// nettoyage
+glBindVertexArray(0);   // !! pourquoi en premier ? !!
+glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+// draw
+glBindVertexArray(vao);
+glUseProgram( ... );
+glUniform( ... );
+
+glDrawArrays(GL_TRIANGLES, /* first */ 0, /* count */ mesh.vertex_count());
+\endcode
+
+### glDrawElements et Mesh
+
+la démarche est la même, il faut créer l'index buffer, en plus du vertex buffer et bien sur configurer le vao :
+\code
+Mesh mesh = { ... };
+
+// configuration
+GLuint vao= 0;
+GLuint vertex_buffer= 0;
+GLuint index_buffer= 0;
+
+glGenVertexArrays(1, &vao);
+glBindVertexArray(vao);
+
+glGenBuffers(1, &vertex_buffer);
+glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+glBufferData(GL_ARRAY_BUFFER, mesh.vertex_buffer_size(), mesh.vertex_buffer(), GL_STATIC_DRAW);
+
+// configure l'attribut 0, cf layout(location= 0) in vec3 position, dans le vertex shader
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+glEnableVertexAttrib(0);
+
+if(mesh.index_count() > 0)
+{
+    glGenBuffers(1, &index_buffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.index_buffer_size(), mesh.index_buffer(), GL_STATIC_DRAW);
+    
+    // !! la configuration du vao est implicite au moment du BindBuffer(GL_ELEMENT_ARRAY_BUFFER) !!
+}
+
+// nettoyage
+glBindVertexArray(0);   // !! pourquoi en premier ? !!
+glBindBuffer(GL_ARRAY_BUFFER, 0);
+glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+// draw
+glBindVertexArray(vao);
+glUseProgram( ... );
+glUniform( ... );
+
+// choisir le draw
+if(mesh.index_count() == 0)
+    // pas d'index buffer
+    glDrawArrays(GL_TRIANGLES, /* first */ 0, /* count */ mesh.vertex_count());
+else
+    // avec un index buffer
+    glDrawElements(GL_TRIANGLES, /* count */ mesh.index_count(), /* index type */ GL_UNSIGNED_INT, /* offset */ 0);
+\endcode
+
+les paramètres type et offset permettent d'itérer sur les indices stockés dans l'index buffer associé au vao.
+
+__remarque :__ read_mesh( ) ne construit pas, pour 
